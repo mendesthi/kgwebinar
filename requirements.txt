@@ -1,0 +1,6 @@
+Flask
+Flask_Cors
+hana_ml
+configparser
+hdbcli
+uwsgi
