@@ -3,6 +3,7 @@ import configparser
 from flask import Flask, request, jsonify, json
 from flask_cors import CORS
 from hana_ml import dataframe
+from SPARQLWrapper import SPARQLWrapper, JSON
 
 # Check if the application is running on Cloud Foundry
 if 'VCAP_APPLICATION' in os.environ:
@@ -43,7 +44,45 @@ def execute_query_raw():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 400
+
+@app.route('/execute_sparql_query', methods=['GET'])
+def execute_sparql_query():
+    try:
+        # Get the raw SQL query from the URL arguments
+        query = request.args.get('query')
+
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+
+        cursor = connection.connection.cursor()
+        result = cursor.callproc('SPARQL_EXECUTE', (query, 'application/sparql-results+json', '?', '?'))
+        result_json = result[2]
+        
+        return jsonify(json.loads(result_json)), 200
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+    
+@app.route('/consume_sparql_query', methods=['GET'])
+def consume_sparql_query():
+    try:
+        # Get the raw SQL query from the URL arguments
+        query = request.args.get('query')
+
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+
+        # Use SPARQLWrapper to send the query to the execute_sparql_query endpoint
+        sparql = SPARQLWrapper("http://localhost:8080/execute_sparql_query")
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
+        results = sparql.query().convert()
+
+        return jsonify(results), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/', methods=['GET'])
 def root():
     return 'Embeddings API: Health Check Successfull.', 200
