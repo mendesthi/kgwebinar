@@ -63,25 +63,25 @@ def execute_sparql_query():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
     
-@app.route('/consume_sparql_query', methods=['GET'])
-def consume_sparql_query():
-    try:
-        # Get the raw SQL query from the URL arguments
-        query = request.args.get('query')
+# @app.route('/consume_sparql_query', methods=['GET'])
+# def consume_sparql_query():
+#     try:
+#         # Get the raw SQL query from the URL arguments
+#         query = request.args.get('query')
 
-        if not query:
-            return jsonify({'error': 'Query is required'}), 400
+#         if not query:
+#             return jsonify({'error': 'Query is required'}), 400
 
-        # Use SPARQLWrapper to send the query to the execute_sparql_query endpoint
-        sparql = SPARQLWrapper("http://localhost:8080/execute_sparql_query")
-        sparql.setQuery(query)
-        sparql.setReturnFormat(JSON)
-        results = sparql.query().convert()
+#         # Use SPARQLWrapper to send the query to the execute_sparql_query endpoint
+#         sparql = SPARQLWrapper("http://localhost:8080/execute_sparql_query")
+#         sparql.setQuery(query)
+#         sparql.setReturnFormat(JSON)
+#         results = sparql.query().convert()
 
-        return jsonify(results), 200
+#         return jsonify(results), 200
     
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+#     except Exception as e:
+#         return jsonify({'error': str(e)}), 400
 
 @app.route('/', methods=['GET'])
 def root():
