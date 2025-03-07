@@ -1,6 +1,15 @@
 Flask
-Flask_Cors
-hana_ml
+Flask-Cors
+hana-ml
 configparser
 hdbcli
 uwsgi
+SPARQLWrapper
+langchain
+google-api-python-client
+google-auth
+google-auth-httplib2
+google-auth-oauthlib
+google-cloud-aiplatform
+langchain_google_vertexai
+langchain_openai
