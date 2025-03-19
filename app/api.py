@@ -156,6 +156,51 @@ def translate_nl_to_sparql():
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
+@app.route('/config', methods=['GET', 'POST'])
+def config():
+    cursor = connection.connection.cursor()
+    
+    if request.method == 'POST':
+        # Update the configuration values
+        data = request.get_json()
+        ontology_query = data.get('ontology_query')
+        property_query = data.get('property_query')
+        classes_query = data.get('classes_query')
+        instructions = data.get('instructions')
+        prefixes = data.get('prefixes')
+        graph = data.get('graph')
+        graph_inferred = data.get('graph_inferred')
+        query_example = data.get('query_example')
+
+        update_query = """
+        UPDATE ontology_config SET 
+            ontology_query = ?, 
+            property_query = ?, 
+            classes_query = ?, 
+            instructions = ?, 
+            prefixes = ?, 
+            graph = ?, 
+            graph_inferred = ?, 
+            query_example = ?
+        """
+        cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example))
+        connection.connection.commit()
+        return jsonify({'message': 'Configuration updated successfully'}), 200
+
+    # Retrieve the current configuration values
+    cursor.execute("SELECT ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example FROM ontology_config")
+    config = cursor.fetchone()
+    return jsonify({
+        'ontology_query': config[0],
+        'property_query': config[1],
+        'classes_query': config[2],
+        'instructions': config[3],
+        'prefixes': config[4],
+        'graph': config[5],
+        'graph_inferred': config[6],
+        'query_example': config[7]
+    }), 200
+    
 @app.route('/', methods=['GET'])
 def root():
     return 'Embeddings API: Health Check Successfull.', 200
