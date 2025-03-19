@@ -3,7 +3,6 @@ import configparser
 from flask import Flask, request, jsonify, json, Response
 from flask_cors import CORS
 from hana_ml import dataframe
-from SPARQLWrapper import SPARQLWrapper, JSON
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from gen_ai_hub.proxy.langchain.init_models import init_llm
@@ -84,108 +83,42 @@ def translate_nl_to_sparql():
         # Get the natural language query and ontology from the request body
         data = request.get_json()
         nl_query = data.get('nl_query')
-        ontology_query = data.get('ontology')
-        properties_query = data.get('properties')
-        classes_query = data.get('classes')
+        # ontology_query = data.get('ontology')
+        # properties_query = data.get('properties')
+        # classes_query = data.get('classes')
         
         if not nl_query:
             return jsonify({'error': 'Natural language query and ontology query are required'}), 400
 
-        # Get the ontology needed
-        ontology_query = "CONSTRUCT {?s ?p ?o} FROM <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology-v2> WHERE {?s ?p ?o}"
+        # Retrieve the configuration from the database
+        cursor = connection.connection.cursor()
+        cursor.execute("SELECT ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example FROM ontology_config")
+        config = cursor.fetchone()
+
+        ontology_query = config[0]
+        property_query = config[1]
+        classes_query = config[2]
+        instructions = config[3]
+        prefixes = config[4]
+        graph = config[5]
+        graph_inferred = config[6]
+        query_example = config[7]
 
         # GET ONTOLOGY - Directly call the logic of execute_sparql_query
         cursor = connection.connection.cursor()
-
         result = cursor.callproc('SPARQL_EXECUTE', (ontology_query, 'application/sparql-results+csv', '?', '?'))
         ontology = result[2]
 
-        # Get the properties needed
-        property_query = """
-            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            prefix : <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology-v2/> 
-            prefix owl: <http://www.w3.org/2002/07/owl#>
-            prefix foaf:  <http://xmlns.com/foaf/0.1/>
-            
-            SELECT DISTINCT ?property_iri ?domain ?range ?description 
-            FROM <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology-v2> 
-            WHERE { 
-                {?property_iri rdf:type owl:ObjectProperty .}
-                UNION
-                {?property_iri rdf:type owl:DatatypeProperty .}
-                OPTIONAL {?property_iri rdfs:comment ?description .}
-                OPTIONAL {
-                    ?property_iri rdfs:domain ?domain ;
-                        rdfs:range ?range .}
-            }
-            ORDER BY ?property_iri
-        """
-
         # GET PROPERTIES - Directly call the logic of execute_sparql_query
         cursor = connection.connection.cursor()
-
         result = cursor.callproc('SPARQL_EXECUTE', (property_query, 'application/sparql-results+json', '?', '?'))
         properties = result[2]
         
-        # Get the classes needed
-        classes_query = """
-            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            prefix : <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology-v2/> 
-            prefix owl: <http://www.w3.org/2002/07/owl#>
-            prefix foaf:  <http://xmlns.com/foaf/0.1/>
-
-            SELECT DISTINCT ?class_iri ?description
-            FROM <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology-v2> 
-            WHERE { 
-                ?class_iri rdf:type owl:Class . 
-                FILTER (isIRI(?class_iri)) . 
-                OPTIONAL { ?class_iri rdfs:comment ?description } 
-            }
-            ORDER BY ?class_iri
-        """
-        
         # GET CLASSES - Directly call the logic of execute_sparql_query
         cursor = connection.connection.cursor()
-
         result = cursor.callproc('SPARQL_EXECUTE', (classes_query, 'application/sparql-results+json', '?', '?'))
         classes = result[0]
         
-        instructions = """
-            When you generate the final query, remove these ``` quotes and only return the query.
-        """
-
-        prefixes = """ 
-            Use the following prefixes when generating the SPARQL query:
-            
-            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            prefix : <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology/> 
-            prefix owl: <http://www.w3.org/2002/07/owl#>
-            prefix foaf:  <http://xmlns.com/foaf/0.1/>
-        """
-        graph = """http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-rdf-v4"""
-        graph_inferred = """http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-inferred-triples-v4"""
-
-        query_example = """
-            prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-            prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            prefix : <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-ontology/> 
-            prefix owl: <http://www.w3.org/2002/07/owl#>
-            prefix foaf:  <http://xmlns.com/foaf/0.1/>
-            
-            SELECT ?partnerRef ?psrRef
-            FROM 
-                <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-rdf-v4> 
-            FROM 
-                <http://www.semanticweb.org/ontologies/2025/smart-technical-advisory-inferred-triples3>
-            WHERE 
-            {  
-                ?partnerRef a :SAPPartner;
-                    :requested ?psrRef .
-            }
-        """
         # Initialize the LLM model from SAP AI Hub
         llm = init_llm(model_name="gpt-4o")
 
@@ -218,40 +151,10 @@ def translate_nl_to_sparql():
 
         sparql_query = response.strip()
 
-        # if not sparql_query.startswith("SELECT") and not sparql_query.startswith("CONSTRUCT") and not sparql_query.startswith("ASK") and not sparql_query.startswith("DESCRIBE"):
-        #     return jsonify({'error': 'Failed to retrieve SPARQL query from LLM response', 'details': sparql_query}), 400
-
         return jsonify({'sparql_query': sparql_query}), 200
     
     except Exception as e:
         return jsonify({'error': str(e)}), 400
-
-# @app.route('/chat_sparql_graph', methods=['GET'])
-# def chat_sparql_graph():
-#     try:
-        
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 400
-    
-# @app.route('/consume_sparql_query', methods=['GET'])
-# def consume_sparql_query():
-#     try:
-#         # Get the raw SQL query from the URL arguments
-#         query = request.args.get('query')
-
-#         if not query:
-#             return jsonify({'error': 'Query is required'}), 400
-
-#         # Use SPARQLWrapper to send the query to the execute_sparql_query endpoint
-#         sparql = SPARQLWrapper("http://localhost:8080/execute_sparql_query")
-#         sparql.setQuery(query)
-#         sparql.setReturnFormat(JSON)
-#         results = sparql.query().convert()
-
-#         return jsonify(results), 200
-    
-#     except Exception as e:
-#         return jsonify({'error': str(e)}), 400
 
 @app.route('/', methods=['GET'])
 def root():
