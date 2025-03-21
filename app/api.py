@@ -5,6 +5,7 @@ from flask_cors import CORS
 from hana_ml import dataframe
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+from langchain_core.output_parsers import StrOutputParser
 from gen_ai_hub.proxy.langchain.init_models import init_llm
 from sql_formatter.core import format_sql
 from hdbcli import dbapi
@@ -187,17 +188,17 @@ def translate_nl_to_new():
         # Initialize the LLM model from SAP AI Hub
         llm = init_llm(model_name="gpt-4o")
 
-        # Define the prompt template
-        prompt_template = PromptTemplate(
-            input_variables=["nl_query"],
+        # Define the prompt template for topic extraction
+        prompt_template_topic = PromptTemplate(
+            input_variables=["question"],
             template=template_similarity
         )
 
-        # Create the LLM chain
-        chain = LLMChain(llm=llm, prompt=prompt_template)
+        # Create the LLM chain for topic extraction
+        chain_topic = prompt_template_topic | llm | StrOutputParser()
 
         # Run the chain with the provided inputs
-        response_topic = chain.run({"question": nl_query})
+        response_topic = chain_topic.invoke({'question': nl_query})
         
         # Strip out the formatting and extract the JSON content
         response_topic = response_topic.strip('```python\n').strip('\n```')
@@ -210,18 +211,28 @@ def translate_nl_to_new():
         query = response_topic["query"]
 
         # Define the prompt template for SPARQL query generation
-        prompt_template = PromptTemplate(
-            input_variables=["query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
+        prompt_template_sparql = PromptTemplate(
+            input_variables=["nl_query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
             template=template
         )
         
-        # Create the LLM chain
-        chain = LLMChain(llm=llm, prompt=prompt_template)
+        # Create the LLM chain for SPARQL query generation
+        chain_sparql = prompt_template_sparql | llm
 
         # Run the chain with the provided inputs
-        response = chain.run({"nl_query": query, "classes":classes, "properties": properties, "ontology": ontology, "graph":graph, "graph_inferred":graph_inferred, "prefixes":prefixes, "query_example":query_example, "instructions":instructions, "template":template})
+        response_sparql = chain_sparql.invoke({
+            "nl_query": query,
+            "classes": classes,
+            "properties": properties,
+            "ontology": ontology,
+            "graph": graph,
+            "graph_inferred": graph_inferred,
+            "prefixes": prefixes,
+            "query_example": query_example,
+            "instructions": instructions
+        })
 
-        sparql_query = response.strip()
+        sparql_query = response_sparql.content.strip()
         
         if topic != "None":
             final_query = format_sql(query_template.format(generated_sparql_query=sparql_query, topic=topic))
@@ -240,10 +251,10 @@ def translate_nl_to_new():
         # Convert the result to JSON if needed
         result_json = json.dumps(result)
 
-        return jsonify(json.loads(result_json)), 200
+        return jsonify({'result': json.loads(result_json), 'final_query': final_query}), 200
     
     except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        return jsonify({'error': str(e), 'final_query': final_query}), 400
 
 @app.route('/config', methods=['GET', 'POST'])
 def config():
@@ -261,6 +272,9 @@ def config():
         graph_inferred = data.get('graph_inferred')
         query_example = data.get('query_example')
         template = data.get('template')
+        query_template = data.get('query_template')
+        query_template_no_topic = data.get('query_template_no_topic')
+        template_similarity = data.get('template_similarity')
 
         update_query = """
         UPDATE ontology_config SET 
@@ -277,12 +291,12 @@ def config():
             query_template_no_topic = ?,
             template_similarity = ?
         """
-        cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example, template))
+        cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example, template, query_template, query_template_no_topic, template_similarity))
         connection.connection.commit()
         return jsonify({'message': 'Configuration updated successfully'}), 200
 
     # Retrieve the current configuration values
-    cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE FROM ONTOLOGY_CONFIG")    
+    cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE, QUERY_TEMPLATE, QUERY_TEMPLATE_NO_TOPIC, TEMPLATE_SIMILARITY FROM ONTOLOGY_CONFIG")
     config = cursor.fetchone()
     return jsonify({
         'ontology_query': config[0],
