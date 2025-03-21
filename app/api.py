@@ -272,7 +272,10 @@ def config():
             graph = ?, 
             graph_inferred = ?, 
             query_example = ?,
-            template = ?
+            template = ?,
+            query_template = ?,
+            query_template_no_topic = ?,
+            template_similarity = ?
         """
         cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example, template))
         connection.connection.commit()
@@ -290,7 +293,10 @@ def config():
         'graph': config[5],
         'graph_inferred': config[6],
         'query_example': config[7],
-        'template': config[8]
+        'template': config[8],
+        'query_template': config[9],
+        'query_template_no_topic': config[10],
+        'template_similarity': config[11]
     }), 200
     
 @app.route('/', methods=['GET'])
