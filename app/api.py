@@ -168,7 +168,7 @@ def config():
             query_example = ?,
             template = ?
         """
-        cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example))
+        cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example, template))
         connection.connection.commit()
         return jsonify({'message': 'Configuration updated successfully'}), 200
 
