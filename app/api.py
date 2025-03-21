@@ -83,16 +83,13 @@ def translate_nl_to_sparql():
         # Get the natural language query and ontology from the request body
         data = request.get_json()
         nl_query = data.get('nl_query')
-        # ontology_query = data.get('ontology')
-        # properties_query = data.get('properties')
-        # classes_query = data.get('classes')
         
         if not nl_query:
             return jsonify({'error': 'Natural language query and ontology query are required'}), 400
 
         # Retrieve the configuration from the database
         cursor = connection.connection.cursor()
-        cursor.execute("SELECT ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example FROM ontology_config")
+        cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE FROM ONTOLOGY_CONFIG")
         config = cursor.fetchone()
 
         ontology_query = config[0]
@@ -103,6 +100,7 @@ def translate_nl_to_sparql():
         graph = config[5]
         graph_inferred = config[6]
         query_example = config[7]
+        template = config[8]
 
         # GET ONTOLOGY - Directly call the logic of execute_sparql_query
         cursor = connection.connection.cursor()
@@ -125,22 +123,7 @@ def translate_nl_to_sparql():
         # Define the prompt template
         prompt_template = PromptTemplate(
             input_variables=["nl_query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
-            template="""
-            Use the provided information about the classes and properties from the ontology 
-            to generate a SPARQL query corresponding to the request here: {nl_query} .
-
-            Information about the classes defined in the ontology can be found here in csv format: {classes} .
-            Information about the properties defined in the ontology can be found here in csv format: {properties} . 
-            Check always the domain and range of the properties to understand how to build the SPARQL query.
-            The whole ontology is described in turtle format here: {ontology} .
-
-            When you build the SPARQL query use the following prefixes: {prefixes} and refer to this example: {query_example} .
-            The knowledge graphs to query are: {graph} and {graph_inferred} . Always include them in two FROM statements as in the provided example.
-            If the request asks for information about PBC order numbers, always name the variable "pcbOrderNumber" .
-            Always access the PBC order numbers with corresponding property of the service class.
-
-            Consider also the following final instructions: {instructions} .
-            """
+            template=template
         )
 
         # Create the LLM chain
@@ -171,6 +154,7 @@ def config():
         graph = data.get('graph')
         graph_inferred = data.get('graph_inferred')
         query_example = data.get('query_example')
+        template = data.get('template')
 
         update_query = """
         UPDATE ontology_config SET 
@@ -181,14 +165,15 @@ def config():
             prefixes = ?, 
             graph = ?, 
             graph_inferred = ?, 
-            query_example = ?
+            query_example = ?,
+            template = ?
         """
         cursor.execute(update_query, (ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example))
         connection.connection.commit()
         return jsonify({'message': 'Configuration updated successfully'}), 200
 
     # Retrieve the current configuration values
-    cursor.execute("SELECT ontology_query, property_query, classes_query, instructions, prefixes, graph, graph_inferred, query_example FROM ontology_config")
+    cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE FROM ONTOLOGY_CONFIG")    
     config = cursor.fetchone()
     return jsonify({
         'ontology_query': config[0],
@@ -198,7 +183,8 @@ def config():
         'prefixes': config[4],
         'graph': config[5],
         'graph_inferred': config[6],
-        'query_example': config[7]
+        'query_example': config[7],
+        'template': config[8]
     }), 200
     
 @app.route('/', methods=['GET'])
