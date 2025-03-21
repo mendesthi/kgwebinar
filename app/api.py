@@ -8,7 +8,6 @@ from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from gen_ai_hub.proxy.langchain.init_models import init_llm
 from sql_formatter.core import format_sql
-from hdbcli import dbapi
 
 # Check if the application is running on Cloud Foundry
 if 'VCAP_APPLICATION' in os.environ:

@@ -16,3 +16,4 @@ langchain_google_vertexai
 langchain_openai
 langchain_aws
 langchain_community
+sql_formatter
