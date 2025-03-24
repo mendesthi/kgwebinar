@@ -8,6 +8,8 @@ from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from gen_ai_hub.proxy.langchain.init_models import init_llm
 from sql_formatter.core import format_sql
+from gen_ai_hub.proxy.langchain.openai import ChatOpenAI
+from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
 
 # Check if the application is running on Cloud Foundry
 if 'VCAP_APPLICATION' in os.environ:
@@ -102,7 +104,7 @@ def translate_nl_to_sparql():
         graph = config[5]
         graph_inferred = config[6]
         query_example = config[7]
-        template = config[8]
+        template_config = config[8]
 
         # GET ONTOLOGY - Directly call the logic of execute_sparql_query
         cursor = connection.connection.cursor()
@@ -120,21 +122,37 @@ def translate_nl_to_sparql():
         classes = result[0]
         
         # Initialize the LLM model from SAP AI Hub
-        llm = init_llm(model_name="gpt-4o")
+        # llm = init_llm(model_name="gpt-4", temperature=0)
+
+        # Initialize the LLM model from SAP AI Hub
+        proxy_client = get_proxy_client('gen-ai-hub')
+        llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_client)
 
         # Define the prompt template
         prompt_template = PromptTemplate(
             input_variables=["nl_query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
-            template=template
+            template=template_config
         )
 
         # Create the LLM chain
-        chain = LLMChain(llm=llm, prompt=prompt_template)
-
+        # chain = LLMChain(llm=llm, prompt=prompt_template)
+        chain = prompt_template | llm
+        
         # Run the chain with the provided inputs
-        response = chain.run({"nl_query": nl_query, "classes":classes, "properties": properties, "ontology": ontology, "graph":graph, "graph_inferred":graph_inferred, "prefixes":prefixes, "query_example":query_example, "instructions":instructions})
-
-        sparql_query = response.strip()
+        # response = chain.run({"nl_query": nl_query, "classes":classes, "properties": properties, "ontology": ontology, "graph":graph, "graph_inferred":graph_inferred, "prefixes":prefixes, "query_example":query_example, "instructions":instructions})
+        response = chain.invoke({"nl_query": nl_query, 
+                                 "classes":classes, 
+                                 "properties": properties, 
+                                 "ontology": ontology, 
+                                 "graph":graph, 
+                                 "graph_inferred":graph_inferred, 
+                                 "prefixes":prefixes, 
+                                 "query_example":query_example, 
+                                 "instructions":instructions})
+        
+        print("response.content: ", response.content)
+        sparql_query = response.content.strip()
+        print("sparql_query: ", sparql_query)
 
         return jsonify({'sparql_query': sparql_query}), 200
     
@@ -185,7 +203,7 @@ def translate_nl_to_new():
         classes = result[0]
         
         # Initialize the LLM model from SAP AI Hub
-        llm = init_llm(model_name="gpt-4o")
+        llm = init_llm(model_name="gpt-4", temperature=0)
 
         # Define the prompt template for topic extraction
         prompt_template_topic = PromptTemplate(
