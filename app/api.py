@@ -35,6 +35,56 @@ llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_cli
 app = Flask(__name__)
 CORS(app)
 
+# Define the global variables
+global_config = {}
+global_ontology = None
+global_properties = None
+global_classes = None
+
+def initialize_data():
+    global global_config, global_ontology, global_properties, global_classes
+    try:
+        # Retrieve the configuration from the database
+        cursor = connection.connection.cursor()
+        cursor.execute("""
+            SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE, QUERY_TEMPLATE, QUERY_TEMPLATE_NO_TOPIC, TEMPLATE_SIMILARITY 
+            FROM ONTOLOGY_CONFIG
+        """)
+        config = cursor.fetchone()
+
+        # Update the global configuration
+        global_config = {
+            'ontology_query': config[0],
+            'property_query': config[1],
+            'classes_query': config[2],
+            'instructions': config[3],
+            'prefixes': config[4],
+            'graph': config[5],
+            'graph_inferred': config[6],
+            'query_example': config[7],
+            'template': config[8],
+            'query_template': config[9],
+            'query_template_no_topic': config[10],
+            'template_similarity': config[11]
+        }
+
+        # Load ontology, properties, and classes
+        cursor = connection.connection.cursor()
+        result = cursor.callproc('SPARQL_EXECUTE', (global_config['ontology_query'], 'application/sparql-results+csv', '?', '?'))
+        global_ontology = result[2]
+
+        cursor = connection.connection.cursor()
+        result = cursor.callproc('SPARQL_EXECUTE', (global_config['property_query'], 'application/sparql-results+json', '?', '?'))
+        global_properties = result[2]
+
+        cursor = connection.connection.cursor()
+        result = cursor.callproc('SPARQL_EXECUTE', (global_config['classes_query'], 'application/sparql-results+json', '?', '?'))
+        global_classes = result[0]
+
+        print("Configuration and data loaded successfully.")
+    except Exception as e:
+        print(f"Error during initialization: {e}")
+            
 @app.route('/execute_query_raw', methods=['POST'])
 def execute_query_raw():
     try:
@@ -92,37 +142,18 @@ def translate_nl_to_sparql():
         
         if not nl_query:
             return jsonify({'error': 'Natural language query required'}), 400
-
-        # Retrieve the configuration from the database
-        cursor = connection.connection.cursor()
-        cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE FROM ONTOLOGY_CONFIG")
-        config = cursor.fetchone()
-
-        ontology_query = config[0]
-        property_query = config[1]
-        classes_query = config[2]
-        instructions = config[3]
-        prefixes = config[4]
-        graph = config[5]
-        graph_inferred = config[6]
-        query_example = config[7]
-        template_config = config[8]
-
-        # GET ONTOLOGY - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (ontology_query, 'application/sparql-results+csv', '?', '?'))
-        ontology = result[2]
-
-        # GET PROPERTIES - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (property_query, 'application/sparql-results+json', '?', '?'))
-        properties = result[2]
         
-        # GET CLASSES - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (classes_query, 'application/sparql-results+json', '?', '?'))
-        classes = result[0]
-        
+        # Use the global configuration
+        ontology = global_ontology
+        properties = global_properties
+        classes = global_classes
+        instructions = global_config.get('instructions')
+        prefixes = global_config.get('prefixes')
+        graph = global_config.get('graph')
+        graph_inferred = global_config.get('graph_inferred')
+        query_example = global_config.get('query_example')
+        template_config = global_config.get('template')
+
         # Define the prompt template
         prompt_template = PromptTemplate(
             input_variables=["nl_query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
@@ -161,39 +192,20 @@ def translate_nl_to_new():
         
         if not nl_query:
             return jsonify({'error': 'Natural language query required'}), 400
-
-        # Retrieve the configuration from the database
-        cursor = connection.connection.cursor()
-        cursor.execute("SELECT ONTOLOGY_QUERY, PROPERTY_QUERY, CLASSES_QUERY, INSTRUCTIONS, PREFIXES, GRAPH, GRAPH_INFERRED, QUERY_EXAMPLE, TEMPLATE, TEMPLATE_SIMILARITY, QUERY_TEMPLATE, QUERY_TEMPLATE_NO_TOPIC FROM ONTOLOGY_CONFIG")
-        config = cursor.fetchone()
-
-        ontology_query = config[0]
-        property_query = config[1]
-        classes_query = config[2]
-        instructions = config[3]
-        prefixes = config[4]
-        graph = config[5]
-        graph_inferred = config[6]
-        query_example = config[7]
-        template = config[8]
-        template_similarity = config[9]
-        query_template = config[10]
-        query_template_no_topic = config[11]
-
-        # GET ONTOLOGY - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (ontology_query, 'application/sparql-results+csv', '?', '?'))
-        ontology = result[2]
-
-        # GET PROPERTIES - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (property_query, 'application/sparql-results+json', '?', '?'))
-        properties = result[2]
         
-        # GET CLASSES - Directly call the logic of execute_sparql_query
-        cursor = connection.connection.cursor()
-        result = cursor.callproc('SPARQL_EXECUTE', (classes_query, 'application/sparql-results+json', '?', '?'))
-        classes = result[0]
+        # Use the global configuration
+        ontology = global_ontology
+        properties = global_properties
+        classes = global_classes
+        instructions = global_config.get('instructions')
+        prefixes = global_config.get('prefixes')
+        graph = global_config.get('graph')
+        graph_inferred = global_config.get('graph_inferred')
+        query_example = global_config.get('query_example')
+        template = global_config.get('template')
+        template_similarity = global_config.get('template_similarity')
+        query_template = global_config.get('query_template')
+        query_template_no_topic = global_config.get('query_template_no_topic')
 
         # Define the prompt template for topic extraction
         prompt_template_topic = PromptTemplate(
@@ -320,6 +332,14 @@ def config():
         'template_similarity': config[11]
     }), 200
     
+@app.route('/load_config', methods=['POST'])
+def load_config():
+    try:
+        initialize_data()  # Call the initialization function
+        return jsonify({'message': 'Configuration and data loaded successfully'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+        
 @app.route('/', methods=['GET'])
 def root():
     return 'Embeddings API: Health Check Successfull.', 200
@@ -329,4 +349,5 @@ def create_app():
 
 # Start the Flask app
 if __name__ == '__main__':
+    initialize_data()
     app.run('0.0.0.0', 8080)
