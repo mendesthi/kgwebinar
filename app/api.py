@@ -203,8 +203,12 @@ def translate_nl_to_new():
         classes = result[0]
         
         # Initialize the LLM model from SAP AI Hub
-        llm = init_llm(model_name="gpt-4", temperature=0)
+        # llm = init_llm(model_name="gpt-4", temperature=0)
 
+        # Initialize the LLM model from SAP AI Hub
+        proxy_client = get_proxy_client('gen-ai-hub')
+        llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_client)
+        
         # Define the prompt template for topic extraction
         prompt_template_topic = PromptTemplate(
             input_variables=["question"],
