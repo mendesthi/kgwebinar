@@ -3,10 +3,8 @@ import configparser
 from flask import Flask, request, jsonify, json, Response
 from flask_cors import CORS
 from hana_ml import dataframe
-from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from gen_ai_hub.proxy.langchain.init_models import init_llm
 from sql_formatter.core import format_sql
 from gen_ai_hub.proxy.langchain.openai import ChatOpenAI
 from gen_ai_hub.proxy.core.proxy_clients import get_proxy_client
@@ -27,8 +25,12 @@ else:
     hanaUser = config['database']['user']
     hanaPW = config['database']['password']
 
-# Step 1: Establish a connection to SAP HANA
+# Establish a connection to SAP HANA
 connection = dataframe.ConnectionContext(hanaURL, hanaPort, hanaUser, hanaPW)
+
+# Initialize the proxy client and LLM model globally
+proxy_client = get_proxy_client('gen-ai-hub')
+llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_client)
 
 app = Flask(__name__)
 CORS(app)
@@ -121,13 +123,6 @@ def translate_nl_to_sparql():
         result = cursor.callproc('SPARQL_EXECUTE', (classes_query, 'application/sparql-results+json', '?', '?'))
         classes = result[0]
         
-        # Initialize the LLM model from SAP AI Hub
-        # llm = init_llm(model_name="gpt-4", temperature=0)
-
-        # Initialize the LLM model from SAP AI Hub
-        proxy_client = get_proxy_client('gen-ai-hub')
-        llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_client)
-
         # Define the prompt template
         prompt_template = PromptTemplate(
             input_variables=["nl_query", "classes", "properties", "ontology", "graph", "graph_inferred", "prefixes", "query_example", "instructions"],
@@ -135,11 +130,9 @@ def translate_nl_to_sparql():
         )
 
         # Create the LLM chain
-        # chain = LLMChain(llm=llm, prompt=prompt_template)
         chain = prompt_template | llm
         
         # Run the chain with the provided inputs
-        # response = chain.run({"nl_query": nl_query, "classes":classes, "properties": properties, "ontology": ontology, "graph":graph, "graph_inferred":graph_inferred, "prefixes":prefixes, "query_example":query_example, "instructions":instructions})
         response = chain.invoke({"nl_query": nl_query, 
                                  "classes":classes, 
                                  "properties": properties, 
@@ -201,14 +194,7 @@ def translate_nl_to_new():
         cursor = connection.connection.cursor()
         result = cursor.callproc('SPARQL_EXECUTE', (classes_query, 'application/sparql-results+json', '?', '?'))
         classes = result[0]
-        
-        # Initialize the LLM model from SAP AI Hub
-        # llm = init_llm(model_name="gpt-4", temperature=0)
 
-        # Initialize the LLM model from SAP AI Hub
-        proxy_client = get_proxy_client('gen-ai-hub')
-        llm = ChatOpenAI(proxy_model_name='gpt-4', temperature=0, proxy_client=proxy_client)
-        
         # Define the prompt template for topic extraction
         prompt_template_topic = PromptTemplate(
             input_variables=["question"],
