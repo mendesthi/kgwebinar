@@ -38,25 +38,47 @@ CORS(app)
 @app.route('/execute_query_raw', methods=['POST'])
 def execute_query_raw():
     try:
-        # Get the raw SQL query from the request body
+        # Get the raw query and query type from the request
         query = request.data.decode('utf-8')
-        response_format = request.args.get('format', 'json')
-        
+        query_type = request.args.get('query_type', 'sparql')  # Default to 'sparql'
+        response_format = request.args.get('format', 'json')  # Default to 'json'
+
         if not query:
             return jsonify({'error': 'Query is required'}), 400
 
         cursor = connection.connection.cursor()
-        if response_format == 'csv':
-            result = cursor.callproc('SPARQL_EXECUTE', (query, 'application/sparql-results+csv', '?', '?'))
-            result_csv = result[2]
-            return Response(result_csv, mimetype='text/csv')
+
+        if query_type == 'sparql':
+            # Handle SPARQL queries (default behavior)
+            if response_format == 'csv':
+                result = cursor.callproc('SPARQL_EXECUTE', (query, 'application/sparql-results+csv', '?', '?'))
+                result_csv = result[2]
+                return Response(result_csv, mimetype='text/csv')
+            else:
+                result = cursor.callproc('SPARQL_EXECUTE', (query, 'application/sparql-results+json', '?', '?'))
+                result_json = result[2]
+                return jsonify(json.loads(result_json)), 200
+
+        elif query_type == 'sql':
+            # Handle regular SQL queries
+            cursor.execute(query)
+            if response_format == 'csv':
+                # Convert SQL results to CSV format
+                rows = cursor.fetchall()
+                headers = [desc[0] for desc in cursor.description]
+                csv_data = ','.join(headers) + '\n'
+                csv_data += '\n'.join([','.join(map(str, row)) for row in rows])
+                return Response(csv_data, mimetype='text/csv')
+            else:
+                # Return SQL results as JSON
+                rows = cursor.fetchall()
+                headers = [desc[0] for desc in cursor.description]
+                result_json = [dict(zip(headers, row)) for row in rows]
+                return jsonify(result_json), 200
+
         else:
-            cursor = connection.connection.cursor()
-            result = cursor.callproc('SPARQL_EXECUTE', (query, 'application/sparql-results+json', '?', '?'))
-            result_json = result[2]
-        
-        return jsonify(json.loads(result_json)), 200
-    
+            return jsonify({'error': 'Invalid query_type. Use "sparql" or "sql".'}), 400
+
     except Exception as e:
         return jsonify({'error': str(e)}), 400
 
