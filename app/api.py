@@ -1,6 +1,12 @@
 import os
 import configparser
-from flask import Flask, request, jsonify, json, Response
+
+import requests
+from functools import wraps
+import jwt
+from jwt import PyJWKClient
+
+from flask import Flask, request, jsonify, json, Response, abort
 from flask_cors import CORS
 from hana_ml import dataframe
 from langchain.prompts import PromptTemplate
@@ -16,6 +22,11 @@ if 'VCAP_APPLICATION' in os.environ:
     hanaPort = os.getenv('DB_PORT')
     hanaUser = os.getenv('DB_USER')
     hanaPW = os.getenv('DB_PASSWORD')
+    
+    XSUAA_URL = os.getenv("XSUAA_URL")
+    XSUAA_CLIENT_ID = os.getenv("XSUAA_CLIENT_ID")
+    XSUAA_CLIENT_SECRET = os.getenv("XSUAA_CLIENT_SECRET")
+    XSUAA_XSAPPNAME = os.getenv("XSUAA_XSAPPNAME")
 else:    
     # Not running on Cloud Foundry, read from config.ini file
     config = configparser.ConfigParser()
@@ -24,6 +35,42 @@ else:
     hanaPort = config['database']['port']
     hanaUser = config['database']['user']
     hanaPW = config['database']['password']
+    
+    XSUAA_URL = config['xsuaa']['url']
+    XSUAA_CLIENT_ID = config['xsuaa']['clientid']
+    XSUAA_CLIENT_SECRET = config['xsuaa']['clientsecret']
+    XSUAA_XSAPPNAME = config['xsuaa']['appname']
+
+def get_xsuaa_public_key():
+    # Get the public key from XSUAA's JWKS endpoint
+    resp = requests.get(f"{XSUAA_URL}/token_keys")
+    jwks = resp.json()
+    return {key['kid']: key for key in jwks['keys']}
+
+def require_oauth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.headers.get("Authorization", None)
+        if not auth or not auth.startswith("Bearer "):
+            abort(401, description="Missing or invalid Authorization header")
+        token = auth.split(" ")[1]
+        try:
+            jwks_url = f"{XSUAA_URL}/token_keys"
+            jwks_client = PyJWKClient(jwks_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            public_key = signing_key.key
+            decoded = jwt.decode(
+                token,
+                public_key,
+                algorithms=["RS256"],
+                audience=XSUAA_CLIENT_ID,
+                options={"verify_exp": True}
+            )
+            # Optionally: check scopes, xsappname, etc.
+        except Exception as e:
+            abort(401, description=f"Invalid token: {str(e)}")
+        return f(*args, **kwargs)
+    return decorated
 
 # Establish a connection to SAP HANA
 connection = dataframe.ConnectionContext(hanaURL, hanaPort, hanaUser, hanaPW)
@@ -36,6 +83,7 @@ app = Flask(__name__)
 CORS(app)
 
 @app.route('/execute_query_raw', methods=['POST'])
+@require_oauth
 def execute_query_raw():
     try:
         # Get the raw query and query type from the request
@@ -83,6 +131,7 @@ def execute_query_raw():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/execute_sparql_query', methods=['GET'])
+@require_oauth
 def execute_sparql_query():
     try:
         # Get the raw SQL query and format from the URL arguments
@@ -106,6 +155,7 @@ def execute_sparql_query():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/translate_nl_to_sparql', methods=['POST'])
+@require_oauth
 def translate_nl_to_sparql():
     try:    
         # Get the natural language query and ontology from the request body
@@ -175,6 +225,7 @@ def translate_nl_to_sparql():
         return jsonify({'error': str(e)}), 400
 
 @app.route('/translate_nl_to_new', methods=['POST'])
+@require_oauth
 def translate_nl_to_new():
     try:    
         # Get the natural language query
@@ -286,6 +337,7 @@ def translate_nl_to_new():
         return jsonify({'error': str(e), 'final_query': final_query}), 400
 
 @app.route('/config', methods=['GET', 'POST'])
+@require_oauth
 def config():
     cursor = connection.connection.cursor()
     
